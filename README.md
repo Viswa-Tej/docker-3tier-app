@@ -71,7 +71,7 @@ where the API container starts before PostgreSQL is fully ready.
 
 ```bash
 # 1. Clone and enter
-git clone https://github.com/YOUR_USERNAME/docker-3tier-app
+git clone https://github.com/viswa-tej/docker-3tier-app
 cd docker-3tier-app
 
 # 2. Create your .env file (copy the example)
