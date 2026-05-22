@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Manager — 3-Tier Docker App</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: #f5f5f4; color: #1a1a1a; min-height: 100vh; }
+    header { background: #0f6e56; color: white; padding: 20px 0; text-align: center; }
+    header h1 { font-size: 22px; font-weight: 500; }
+    header p  { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+    .container { max-width: 640px; margin: 32px auto; padding: 0 16px; }
+    .add-card { background: white; border: 0.5px solid #e0e0d8; border-radius: 12px;
+                padding: 16px; margin-bottom: 20px; }
+    .add-row { display: flex; gap: 8px; }
+    input[type=text] { flex: 1; padding: 10px 14px; border: 0.5px solid #d0d0c8;
+                       border-radius: 8px; font-size: 14px; outline: none; }
+    input[type=text]:focus { border-color: #0f6e56; }
+    button.add-btn { background: #0f6e56; color: white; border: none; border-radius: 8px;
+                     padding: 10px 18px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+    button.add-btn:hover { background: #085041; }
+    .task-list { display: flex; flex-direction: column; gap: 8px; }
+    .task { background: white; border: 0.5px solid #e0e0d8; border-radius: 10px;
+            padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+    .task.done { opacity: 0.55; }
+    .task.done .task-title { text-decoration: line-through; color: #888; }
+    input[type=checkbox] { width: 18px; height: 18px; accent-color: #0f6e56; cursor: pointer; }
+    .task-title { flex: 1; font-size: 14px; }
+    .task-meta  { font-size: 11px; color: #aaa; }
+    button.del  { background: none; border: none; color: #cc3333; cursor: pointer;
+                  font-size: 18px; line-height: 1; padding: 0 4px; }
+    button.del:hover { color: #aa1111; }
+    .empty { text-align: center; padding: 40px; color: #aaa; font-size: 14px; }
+    .status-bar { display: flex; gap: 16px; margin-bottom: 12px; font-size: 12px; color: #888; }
+    .status-bar span { background: #f0f0ec; padding: 3px 8px; border-radius: 4px; }
+    .arch-note { background: #e1f5ee; border-radius: 8px; padding: 12px 14px;
+                 font-size: 12px; color: #0f6e56; margin-top: 20px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Task Manager</h1>
+  <p>3-Tier Docker Compose App &nbsp;|&nbsp; Nginx + Flask API + PostgreSQL</p>
+</header>
+
+<div class="container">
+  <div class="add-card">
+    <div class="add-row">
+      <input type="text" id="taskInput" placeholder="Add a new task..." onkeydown="if(event.key==='Enter')addTask()">
+      <button class="add-btn" onclick="addTask()">+ Add Task</button>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span id="totalCount">0 total</span>
+    <span id="doneCount">0 done</span>
+    <span id="pendingCount">0 pending</span>
+  </div>
+
+  <div class="task-list" id="taskList">
+    <div class="empty">No tasks yet. Add one above.</div>
+  </div>
+
+  <div class="arch-note">
+    <strong>Architecture:</strong> This request went through
+    Nginx (reverse proxy, port 80) → Flask API (port 5000) → PostgreSQL (port 5432).
+    All 3 services run in Docker containers on the same Docker network.
+    Data persists in a named Docker volume even after containers restart.
+  </div>
+</div>
+
+<script>
+  const API = '/api/tasks';
+
+  async function loadTasks() {
+    const res = await fetch(API);
+    const tasks = await res.json();
+    renderTasks(tasks);
+  }
+
+  function renderTasks(tasks) {
+    const list = document.getElementById('taskList');
+    if (!tasks.length) {
+      list.innerHTML = '<div class="empty">No tasks yet. Add one above.</div>';
+    } else {
+      list.innerHTML = tasks.map(t => `
+        <div class="task ${t.done ? 'done' : ''}" id="task-${t.id}">
+          <input type="checkbox" ${t.done ? 'checked' : ''}
+            onchange="toggleTask(${t.id}, this.checked)">
+          <span class="task-title">${escHtml(t.title)}</span>
+          <span class="task-meta">${t.created_at.slice(0,16)}</span>
+          <button class="del" onclick="deleteTask(${t.id})">&#x2715;</button>
+        </div>`).join('');
+    }
+    document.getElementById('totalCount').textContent   = tasks.length + ' total';
+    document.getElementById('doneCount').textContent    = tasks.filter(t=>t.done).length + ' done';
+    document.getElementById('pendingCount').textContent = tasks.filter(t=>!t.done).length + ' pending';
+  }
+
+  async function addTask() {
+    const input = document.getElementById('taskInput');
+    const title = input.value.trim();
+    if (!title) return;
+    await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title})
+    });
+    input.value = '';
+    loadTasks();
+  }
+
+  async function toggleTask(id, done) {
+    await fetch(`${API}/${id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({done})
+    });
+    loadTasks();
+  }
+
+  async function deleteTask(id) {
+    await fetch(`${API}/${id}`, { method: 'DELETE' });
+    loadTasks();
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  loadTasks();
+</script>
+</body>
+</html>
